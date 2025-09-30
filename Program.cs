@@ -3,7 +3,7 @@ using System;
 
 class Triangle
 {
-    protected double[] x;  // x-координати вершин111
+    protected double[] x;  // x-координати вершин312321
     protected double[] y;  // y-координати вершин
 
     public Triangle()
