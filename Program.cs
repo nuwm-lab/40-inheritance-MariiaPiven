@@ -3,7 +3,7 @@ using System;
 
 /// <summary>
 /// Базовий клас для трикутника.
-/// </summary>
+/// </summary>1
 public class Triangle
 {
     private double[] _x;
