@@ -1,4 +1,4 @@
-
+﻿
 using System;
 
 /// <summary>
@@ -20,10 +20,32 @@ public class Triangle
     /// </summary>
     public virtual void InputVertices()
     {
-        for (int i = 0; i < 3; i++)
+        while (true)
         {
-            _x[i] = ReadDouble($"x{i + 1}");
-            _y[i] = ReadDouble($"y{i + 1}");
+            for (int i = 0; i < 3; i++)
+            {
+                _x[i] = ReadDouble($"x{i + 1}");
+                _y[i] = ReadDouble($"y{i + 1}");
+            }
+
+            // Перевірка чи не співпадають точки
+            if (Distance(_x[0], _y[0], _x[1], _y[1]) == 0 ||
+                Distance(_x[1], _y[1], _x[2], _y[2]) == 0 ||
+                Distance(_x[2], _y[2], _x[0], _y[0]) == 0)
+            {
+                Console.WriteLine("Помилка: деякі точки співпадають. Введіть різні точки.");
+                continue;
+            }
+
+            // Перевірка чи не лежать точки на одній прямій
+            double area = Math.Abs((_x[1] - _x[0]) * (_y[2] - _y[0]) - (_x[2] - _x[0]) * (_y[1] - _y[0])) / 2.0;
+            if (area == 0)
+            {
+                Console.WriteLine("Помилка: точки лежать на одній прямій. Введіть точки, що утворюють трикутник.");
+                continue;
+            }
+
+            break;
         }
     }
 
