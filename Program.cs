@@ -1,147 +1,207 @@
-﻿
-using System;
+﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 
-/// <summary>
-/// Базовий клас для трикутника.
-/// </summary>
-public class Triangle
+namespace LabWork
 {
-    private double[] _x;
-    private double[] _y;
-
-    public Triangle()
+    // Simple point struct to hold coordinates
+    public readonly struct Point
     {
-        _x = new double[3];
-        _y = new double[3];
+        public double X { get; }
+        public double Y { get; }
+        public Point(double x, double y) { X = x; Y = y; }
+        public override string ToString() => $"({X}, {Y})";
     }
 
-    /// <summary>
-    /// Введення координат вершин з перевіркою.
-    /// </summary>
-    public virtual void InputVertices()
+    internal static class GeometryUtils
     {
-        while (true)
+        public const double Epsilon = 1e-9;
+
+        public static bool IsZero(double v) => Math.Abs(v) < Epsilon;
+        public static double Distance(Point a, Point b)
         {
-            for (int i = 0; i < 3; i++)
-            {
-                _x[i] = ReadDouble($"x{i + 1}");
-                _y[i] = ReadDouble($"y{i + 1}");
-            }
+            double dx = b.X - a.X, dy = b.Y - a.Y;
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+        public static double Cross(Point a, Point b, Point c)
+        {
+            // (b - a) x (c - a)
+            return (b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X);
+        }
+    }
 
-            // Перевірка чи не співпадають точки
-            if (Distance(_x[0], _y[0], _x[1], _y[1]) == 0 ||
-                Distance(_x[1], _y[1], _x[2], _y[2]) == 0 ||
-                Distance(_x[2], _y[2], _x[0], _y[0]) == 0)
-            {
-                Console.WriteLine("Помилка: деякі точки співпадають. Введіть різні точки.");
-                continue;
-            }
+    // Base polygon model with ordering and area via shoelace
+    public abstract class Polygon
+    {
+        private readonly List<Point> _vertices = new();
+        public IReadOnlyList<Point> Vertices => _vertices;
+        protected abstract int ExpectedVertexCount { get; }
 
-            // Перевірка чи не лежать точки на одній прямій
-            double area = Math.Abs((_x[1] - _x[0]) * (_y[2] - _y[0]) - (_x[2] - _x[0]) * (_y[1] - _y[0])) / 2.0;
-            if (area == 0)
-            {
-                Console.WriteLine("Помилка: точки лежать на одній прямій. Введіть точки, що утворюють трикутник.");
-                continue;
-            }
+        public void SetVertices(IEnumerable<Point> points)
+        {
+            if (points is null) throw new ArgumentException("Список вершин не може бути null.");
+            var list = points.ToList();
+            if (list.Count != ExpectedVertexCount)
+                throw new ArgumentException($"Очікується {ExpectedVertexCount} вершин(и), отримано {list.Count}.");
 
-            break;
+            // Duplicate check (epsilon)
+            for (int i = 0; i < list.Count; i++)
+                for (int j = i + 1; j < list.Count; j++)
+                    if (GeometryUtils.Distance(list[i], list[j]) < GeometryUtils.Epsilon)
+                        throw new ArgumentException("Деякі вершини співпадають.");
+
+            // Order CCW around centroid to ensure consistent area and validation
+            var cx = list.Average(p => p.X);
+            var cy = list.Average(p => p.Y);
+            list = list
+                .OrderBy(p => Math.Atan2(p.Y - cy, p.X - cx))
+                .ToList();
+
+            _vertices.Clear();
+            _vertices.AddRange(list);
+
+            ValidateAfterOrdering();
+        }
+
+        protected virtual void ValidateAfterOrdering() { }
+
+        public virtual double CalculateArea()
+        {
+            // Shoelace formula (requires ordered polygon without self-intersections)
+            double sum = 0;
+            int n = _vertices.Count;
+            for (int i = 0; i < n; i++)
+            {
+                var a = _vertices[i];
+                var b = _vertices[(i + 1) % n];
+                sum += a.X * b.Y - a.Y * b.X;
+            }
+            return Math.Abs(sum) / 2.0;
         }
     }
 
     /// <summary>
-    /// Виведення координат вершин.
+    /// Triangle with non-collinearity validation
     /// </summary>
-    public virtual void PrintVertices()
+    public sealed class Triangle : Polygon
     {
-        Console.WriteLine("\nКоординати вершин трикутника:");
-        for (int i = 0; i < 3; i++)
-            Console.WriteLine($"Вершина {i + 1}: ({_x[i]}, {_y[i]})");
+        protected override int ExpectedVertexCount => 3;
+
+        protected override void ValidateAfterOrdering()
+        {
+            var a = Vertices[0];
+            var b = Vertices[1];
+            var c = Vertices[2];
+            double area2 = GeometryUtils.Cross(a, b, c);
+            if (GeometryUtils.IsZero(area2))
+                throw new ArgumentException("Точки трикутника лежать на одній прямій.");
+        }
     }
 
     /// <summary>
-    /// Обчислення площі трикутника (формула Герона).
+    /// Convex quadrilateral with convexity validation
     /// </summary>
-    public virtual double CalculateArea()
+    public sealed class ConvexQuadrilateral : Polygon
     {
-        double a = Distance(_x[0], _y[0], _x[1], _y[1]);
-        double b = Distance(_x[1], _y[1], _x[2], _y[2]);
-        double c = Distance(_x[2], _y[2], _x[0], _y[0]);
-        double p = (a + b + c) / 2;
-        return Math.Sqrt(p * (p - a) * (p - b) * (p - c));
-    }
+        protected override int ExpectedVertexCount => 4;
 
-    protected double ReadDouble(string name)
-    {
-        double value;
-        while (true)
+        protected override void ValidateAfterOrdering()
         {
-            Console.Write($"Введіть координату {name}: ");
-            if (double.TryParse(Console.ReadLine(), out value))
-                return value;
-            Console.WriteLine("Некоректне значення! Введіть число.");
+            // Strict convexity: consistent cross product signs and no collinear adjacent triples
+            int n = Vertices.Count;
+            double? sign = null;
+            for (int i = 0; i < n; i++)
+            {
+                var a = Vertices[i];
+                var b = Vertices[(i + 1) % n];
+                var c = Vertices[(i + 2) % n];
+                double cross = GeometryUtils.Cross(a, b, c);
+                if (GeometryUtils.IsZero(cross))
+                    throw new ArgumentException("Суміжні вершини дають колінеарність — фігура не опукла.");
+                double s = Math.Sign(cross);
+                sign ??= s;
+                if (Math.Sign(cross) != sign)
+                    throw new ArgumentException("Чотирикутник не опуклий або вершини подані у невірному порядку.");
+            }
         }
     }
 
-    protected double Distance(double x1, double y1, double x2, double y2)
+    internal static class ConsoleUI
     {
-        return Math.Sqrt(Math.Pow(x2 - x1, 2) + Math.Pow(y2 - y1, 2));
-    }
-}
-
-/// <summary>
-/// Клас для опуклого чотирикутника.
-/// </summary>
-public class ConvexQuadrilateral : Triangle
-{
-    private double[] _x;
-    private double[] _y;
-
-    public ConvexQuadrilateral()
-    {
-        _x = new double[4];
-        _y = new double[4];
-    }
-
-    public override void InputVertices()
-    {
-        for (int i = 0; i < 4; i++)
+        public static List<Point> ReadVertices(int count, string label)
         {
-            _x[i] = ReadDouble($"x{i + 1}");
-            _y[i] = ReadDouble($"y{i + 1}");
+            var pts = new List<Point>(count);
+            for (int i = 0; i < count; i++)
+            {
+                double x = ReadDouble($"Введіть координату x{i + 1} ({label}): ");
+                double y = ReadDouble($"Введіть координату y{i + 1} ({label}): ");
+                pts.Add(new Point(x, y));
+            }
+            return pts;
+        }
+
+        public static void PrintVertices(IReadOnlyList<Point> vertices, string title)
+        {
+            Console.WriteLine(title);
+            for (int i = 0; i < vertices.Count; i++)
+                Console.WriteLine($"Вершина {i + 1}: {vertices[i]}");
+        }
+
+        private static double ReadDouble(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                var s = Console.ReadLine();
+                if (double.TryParse(s, NumberStyles.Float, CultureInfo.CurrentCulture, out double v))
+                    return v;
+                Console.WriteLine("Некоректне число. Спробуйте ще раз.");
+            }
         }
     }
 
-    public override void PrintVertices()
+    internal static class Program
     {
-        Console.WriteLine("\nКоординати вершин чотирикутника:");
-        for (int i = 0; i < 4; i++)
-            Console.WriteLine($"Вершина {i + 1}: ({_x[i]}, {_y[i]})");
-    }
+        private static void Main()
+        {
+            // Triangle workflow
+            Console.WriteLine("Робота з трикутником:");
+            var triangle = new Triangle();
+            while (true)
+            {
+                try
+                {
+                    var triPts = ConsoleUI.ReadVertices(3, "трикутника");
+                    triangle.SetVertices(triPts);
+                    break;
+                }
+                catch (ArgumentException ex)
+                {
+                    Console.WriteLine($"Помилка: {ex.Message}\n");
+                }
+            }
+            ConsoleUI.PrintVertices(triangle.Vertices, "\nКоординати вершин трикутника:");
+            Console.WriteLine($"Площа трикутника: {triangle.CalculateArea():F2}");
 
-    public override double CalculateArea()
-    {
-        // Compute area by splitting quadrilateral into two triangles: (p1,p2,p3) + (p1,p3,p4)
-        double area1 = Math.Abs(((_x[1] - _x[0]) * (_y[2] - _y[0]) - (_y[1] - _y[0]) * (_x[2] - _x[0])) ) / 2.0;
-        double area2 = Math.Abs(((_x[2] - _x[0]) * (_y[3] - _y[0]) - (_y[2] - _y[0]) * (_x[3] - _x[0])) ) / 2.0;
-        return area1 + area2;
-    }
-}
-
-public class Program
-{
-    public static void Main()
-    {
-        Console.WriteLine("Робота з трикутником:");
-        Triangle triangle = new Triangle();
-        triangle.InputVertices();
-        triangle.PrintVertices();
-        Console.WriteLine($"Площа трикутника: {triangle.CalculateArea():F2}");
-
-        Console.WriteLine("\nРобота з чотирикутником:");
-        ConvexQuadrilateral quad = new ConvexQuadrilateral();
-        quad.InputVertices();
-        quad.PrintVertices();
-        Console.WriteLine($"Площа чотирикутника: {quad.CalculateArea():F2}");
+            // Quadrilateral workflow
+            Console.WriteLine("\nРобота з чотирикутником:");
+            var quad = new ConvexQuadrilateral();
+            while (true)
+            {
+                try
+                {
+                    var quadPts = ConsoleUI.ReadVertices(4, "чотирикутника");
+                    quad.SetVertices(quadPts);
+                    break;
+                }
+                catch (ArgumentException ex)
+                {
+                    Console.WriteLine($"Помилка: {ex.Message}\n");
+                }
+            }
+            ConsoleUI.PrintVertices(quad.Vertices, "\nКоординати вершин чотирикутника:");
+            Console.WriteLine($"Площа чотирикутника: {quad.CalculateArea():F2}");
+        }
     }
 }
